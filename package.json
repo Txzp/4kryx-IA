@@ -1,0 +1,21 @@
+{
+  "name": "4kryx-ai",
+  "version": "1.0.0",
+  "description": "advanced modular ai assistant integrated inside discord using openrouter stream api",
+  "main": "dist/4kryxAI.plugin.js",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w"
+  },
+  "keywords": [],
+  "author": "Txzp",
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-babel": "^6.0.4",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.23.3",
+    "rollup": "^4.12.0"
+  }
+}
