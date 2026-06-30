@@ -1,118 +1,187 @@
-/**
- * @module ChatContainer
- * @description message history list and chat input engine
- */
+import { DiscordModules }    from "../discord/modules.js";
+import { StorageManager }    from "../discord/storage.js";
+import { AIService }         from "../api/aiService.js";
+import { Icon }              from "../utils/icons.js";
+import { buildMessagesHtml } from "./MessageItem.jsx";
+import { SettingsModal }     from "./SettingsModal.jsx";
 
-import { DiscordModules } from "../discord/modules.js"
-import { OpenRouterService } from "../api/openrouter.js"
-import { StorageManager } from "../utils/storage.js"
+export function ChatContainer({ currentView, aiName, aiSystem, activeChatId,
+                                settingsDraft, setSettingsDraft, onSaveSettings,
+                                hasUnsavedSettings, appliedFontFamily, allChats }) {
+  const React          = DiscordModules.react;
+  const [messages,     setMessages]     = React.useState([]);
+  const [inputValue,   setInputValue]   = React.useState("");
+  const [isThinking,   setIsThinking]   = React.useState(false);
+  const chatScrollerRef   = React.useRef(null);
+  const responseBufferRef = React.useRef("");
 
-export function ChatContainer() {
-    const React = DiscordModules.react
-    
-    // state management for messages and user input text
-    const [messages, setMessages] = React.useState(StorageManager.get("chathistory") || [])
-    const [inputValue, setInputValue] = React.useState("")
-    const [isThinking, setIsThinking] = React.useState(false)
+  // Carga mensajes al cambiar de chat
+  React.useEffect(() => {
+    const chats      = StorageManager.get("allChats") || {};
+    const current    = chats[activeChatId] || { messages: [] };
+    setMessages(current.messages);
+    setIsThinking(false);
+  }, [activeChatId]);
 
-    // reference to auto scroll to bottom on new messages
-    const chatEndRef = React.useRef(null)
+  // Scroll al fondo
+  React.useEffect(() => {
+    const end = document.getElementById("fkryx-ai-chat-end");
+    if (end) end.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isThinking, currentView]);
 
-    const scrollToBottom = () => {
-        if (chatEndRef.current) {
-            chatEndRef.current.scrollIntoView({ behavior: "smooth" })
+  // Listener de botones copy/reintentar dentro del HTML
+  React.useEffect(() => {
+    const container = chatScrollerRef.current;
+    if (!container) return;
+    const handleClick = e => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const index  = Number(btn.dataset.index);
+      if (action === "copy")  copyMessage(index);
+      if (action === "again") retryMessage(index);
+    };
+    container.addEventListener("click", handleClick);
+    return () => container.removeEventListener("click", handleClick);
+  }, [messages, isThinking]);
+
+  const emitChatUpdate = (chatId, updatedChat) => {
+    window.dispatchEvent(new CustomEvent("fkryx-update-chat", {
+      detail: { chatId, chat: updatedChat }
+    }));
+  };
+
+  const handleSend = async () => {
+    const text = inputValue.trim();
+    if (!text || isThinking) return;
+
+    const userMsg      = { role: "user", content: text };
+    const updated      = [...messages, userMsg];
+    setMessages([...updated, { role: "assistant", content: "" }]);
+    setInputValue("");
+    setIsThinking(true);
+
+    let buffer = "";
+    await AIService.sendMessage(updated, aiSystem,
+      chunk => {
+        buffer += chunk;
+        setMessages([...updated, { role: "assistant", content: buffer }]);
+      },
+      err => {
+        setIsThinking(false);
+        BdApi.UI.showToast(err, { type: "error" });
+      },
+      () => {
+        setIsThinking(false);
+        const final      = [...updated, { role: "assistant", content: buffer }];
+        const chat       = { ...allChats[activeChatId], messages: final };
+        if (chat.title === "Chat Principal 💬" || chat.title === "Nueva conversación...") {
+          chat.title = text.length > 18 ? text.substring(0, 15) + "..." : text;
         }
+        emitChatUpdate(activeChatId, chat);
+      }
+    );
+  };
+
+  const clearHistory = () => {
+    setMessages([]);
+    emitChatUpdate(activeChatId, { ...allChats[activeChatId], messages: [] });
+    BdApi.UI.showToast("Conversación vaciada", { type: "info" });
+  };
+
+  const getAssistantPos = index => {
+    let count = -1;
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role === "assistant" && messages[i].content.trim() !== "") {
+        count++;
+        if (count === index) return i;
+      }
     }
+    return -1;
+  };
 
-    React.useEffect(() => {
-        scrollToBottom()
-    }, [messages, isThinking])
-
-    // handle send message button or enter key trigger
-    const handleSendMessage = async () => {
-        const text = inputValue.trim()
-        if (!text || isThinking) return
-
-        const userMessage = { role: "user", content: text }
-        const updatedMessages = [...messages, userMessage]
-        
-        setMessages(updatedMessages)
-        setInputValue("")
-        setIsThinking(true)
-
-        let assistantContent = ""
-        const assistantMessagePlaceholder = { role: "assistant", content: "" }
-        
-        // append empty assistant slot for incoming stream
-        setMessages([...updatedMessages, assistantMessagePlaceholder])
-
-        await OpenRouterService.sendMessageStream(
-            updatedMessages,
-            (chunk) => {
-                // on chunk arrived update streaming text view
-                assistantContent += chunk
-                setMessages([...updatedMessages, { role: "assistant", content: assistantContent }])
-            },
-            (errorMsg) => {
-                // on stream error occurred fallback feedback
-                setIsThinking(false)
-                BdApi.UI.showToast(errorMsg, { type: "error" })
-            },
-            () => {
-                // on stream completed persist history storage data
-                setIsThinking(false)
-                const finalHistory = [...updatedMessages, { role: "assistant", content: assistantContent }]
-                StorageManager.set("chathistory", finalHistory)
-            }
-        )
+  const copyMessage = async index => {
+    const pos     = getAssistantPos(index);
+    const content = messages[pos]?.content || "";
+    if (!content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      BdApi.UI.showToast("Copiado al portapapeles", { type: "success" });
+    } catch {
+      BdApi.UI.showToast("No se pudo copiar.", { type: "error" });
     }
+  };
 
-    return React.createElement(
-        "div",
-        { style: { display: "flex", flexDirection: "column", height: "100%", justifyContent: "space-between" } },
-        // message log frame view block
-        React.createElement(
-            "div",
-            { style: { flex: 1, overflowY: "auto", padding: "8px", maxHeight: "calc(100% - 60px)" } },
-            messages.map((msg, index) => 
-                React.createElement(
-                    "div",
-                    { key: index, style: { marginBottom: "12px", alignSelf: msg.role === "user" ? "flex-end" : "flex-start" } },
-                    React.createElement(
-                        "strong",
-                        { style: { color: msg.role === "user" ? "var(--brand-experiment)" : "var(--text-positive)", display: "block" } },
-                        msg.role === "user" ? "You" : "4kryx AI"
-                    ),
-                    React.createElement("span", { style: { color: "var(--text-normal)", whiteSpace: "pre-wrap" } }, msg.content)
-                )
-            ),
-            isThinking && messages[messages.length - 1]?.content === "" && React.createElement(
-                "div",
-                { style: { color: "var(--text-muted)", fontStyle: "italic" } },
-                "AI is typing..."
-            ),
-            React.createElement("div", { ref: chatEndRef })
-        ),
-        // bottom form layout frame container block
-        React.createElement(
-            "div",
-            { style: { display: "flex", padding: "8px", gap: "8px", backgroundColor: "var(--background-tertiary)" } },
-            React.createElement("input", {
-                type: "text",
-                value: inputValue,
-                onChange: (e) => setInputValue(e.target.value),
-                onKeyDown: (e) => e.key === "Enter" && handleSendMessage(),
-                placeholder: "Type a message...",
-                style: { flex: 1, background: "var(--background-secondary-alt)", color: "var(--text-normal)", border: "none", padding: "8px", borderRadius: "4px" }
-            }),
-            React.createElement(
-                "button",
-                {
-                    onClick: handleSendMessage,
-                    style: { backgroundColor: "var(--brand-experiment)", color: "white", border: "none", padding: "8px 16px", borderRadius: "4px", cursor: "pointer" }
-                },
-                "Send"
-            )
-        )
+  const retryMessage = async index => {
+    if (isThinking) return;
+    const assistantPos = getAssistantPos(index);
+    if (assistantPos < 0) return;
+
+    let userPos = -1;
+    for (let i = assistantPos - 1; i >= 0; i--) {
+      if (messages[i].role === "user") { userPos = i; break; }
+    }
+    if (userPos < 0) return;
+
+    const base = [...messages.slice(0, userPos + 1), { role: "assistant", content: "" }];
+    responseBufferRef.current = "";
+    setMessages(base);
+    setIsThinking(true);
+
+    await AIService.sendMessage(base, aiSystem,
+      chunk => {
+        responseBufferRef.current += chunk;
+        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", content: responseBufferRef.current }]);
+      },
+      err => {
+        setIsThinking(false);
+        BdApi.UI.showToast(err, { type: "error" });
+      },
+      () => {
+        setIsThinking(false);
+        const final = [...base.slice(0, -1), { role: "assistant", content: responseBufferRef.current }];
+        emitChatUpdate(activeChatId, { ...allChats[activeChatId], messages: final });
+      }
+    );
+  };
+
+  if (currentView === "settings") {
+    return React.createElement(SettingsModal, {
+      settingsDraft,
+      setSettingsDraft,
+      onSave:          onSaveSettings,
+      hasUnsaved:      hasUnsavedSettings,
+      appliedFontFamily
+    });
+  }
+
+  return React.createElement("div", { className: "fkryx-chat-body" },
+    React.createElement("div", {
+      className: "fkryx-scroller",
+      ref: chatScrollerRef,
+      dangerouslySetInnerHTML: {
+        __html: buildMessagesHtml(messages, aiName, isThinking)
+      }
+    }),
+    React.createElement("div", { className: "fkryx-input-area" },
+      React.createElement("input", {
+        type: "text",
+        value: inputValue,
+        onChange:  e => setInputValue(e.target.value),
+        onKeyDown: e => e.key === "Enter" && handleSend(),
+        placeholder: `Pregúntale algo a ${aiName}...`,
+        className: "fkryx-input-field"
+      }),
+      React.createElement("button", {
+        onClick: handleSend,
+        className: "fkryx-send-btn fkryx-button-ripple",
+        title: "Enviar"
+      }, React.createElement(Icon, { name: "send", size: 18 })),
+      React.createElement("button", {
+        onClick: clearHistory,
+        className: "fkryx-clear-btn fkryx-button-ripple",
+        title: "Limpiar Chat"
+      }, React.createElement(Icon, { name: "trash2", size: 18 }))
     )
+  );
 }

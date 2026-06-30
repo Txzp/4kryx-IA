@@ -20,7 +20,11 @@ export default {
         resolve(),
         babel({
             babelHelpers: "bundled",
-            presets: ["@babel/preset-react"],
+            presets: [
+                ["@babel/preset-react", {
+                    "runtime": "automatic" // <-- ESTO ES LO CRUCIAL: Obliga a usar React 18 moderno sin llamadas viejas de renderizado
+                }]
+            ],
             extensions: [".js", ".jsx"]
         })
     ]

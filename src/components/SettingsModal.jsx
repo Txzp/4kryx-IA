@@ -1,100 +1,103 @@
-/**
- * @module SettingsModal
- * @description api credentials and model selection panel
- */
+import { DiscordModules } from "../discord/modules.js";
+import { FONT_OPTIONS }   from "../config.js";
 
-import { DiscordModules } from "../discord/modules.js"
-import { StorageManager } from "../utils/storage.js"
+export function SettingsModal({ settingsDraft, setSettingsDraft, onSave, hasUnsaved, appliedFontFamily }) {
+  const React  = DiscordModules.react;
+  const update = (field, value) =>
+    setSettingsDraft(prev => ({ ...prev, [field]: value }));
 
-export function SettingsModal({ onClose }) {
-    const React = DiscordModules.react
-
-    // local state management synced with persistent cache storage
-    const [token, setToken] = React.useState(StorageManager.get("openroutertoken") || "")
-    const [model, setModel] = React.useState(StorageManager.get("selectedmodel") || "anthropic/claude-3-haiku")
-
-    // save action handling logic
-    const handleSave = () => {
-        StorageManager.set("openroutertoken", token.trim())
-        StorageManager.set("selectedmodel", model)
-        BdApi.UI.showToast("settings updated successfully", { type: "success" })
-        if (onClose) onClose()
-    }
-
-    return React.createElement(
-        "div",
-        { 
-            style: { 
-                position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", 
-                backgroundColor: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", 
-                justifyContent: "center", zIndex: 3000 
-            } 
-        },
-        React.createElement(
-            "div",
-            { 
-                style: { 
-                    backgroundColor: "var(--background-secondary)", padding: "24px", 
-                    borderRadius: "8px", width: "400px", boxShadow: "var(--elevation-high)",
-                    display: "flex", flexDirection: "column", gap: "16px" 
-                } 
-            },
-            // header label configuration title block
-            React.createElement("h2", { style: { color: "var(--header-primary)", margin: 0 } }, "4kryx AI Settings"),
-            
-            // openrouter token input block layout
-            React.createElement(
-                "div",
-                null,
-                React.createElement("label", { style: { color: "var(--text-normal)", display: "block", marginBottom: "8px" } }, "OpenRouter API Key"),
-                React.createElement("input", {
-                    type: "password",
-                    value: token,
-                    onChange: (e) => setToken(e.target.value),
-                    placeholder: "sk-or-...",
-                    style: { width: "100%", padding: "8px", background: "var(--background-tertiary)", color: "var(--text-normal)", border: "none", borderRadius: "4px", boxSizing: "border-box" }
-                })
-            ),
-
-            // model dropdown select list option layout item
-            React.createElement(
-                "div",
-                null,
-                React.createElement("label", { style: { color: "var(--text-normal)", display: "block", marginBottom: "8px" } }, "AI Model Selection"),
-                React.createElement(
-                    "select",
-                    {
-                        value: model,
-                        onChange: (e) => setModel(e.target.value),
-                        style: { width: "100%", padding: "8px", background: "var(--background-tertiary)", color: "var(--text-normal)", border: "none", borderRadius: "4px", boxSizing: "border-box" }
-                    },
-                    React.createElement("option", { value: "anthropic/claude-3-haiku" }, "Claude 3 Haiku (Fast)"),
-                    React.createElement("option", { value: "meta-llama/llama-3-8b-instruct" }, "Llama 3 8B (Smart)"),
-                    React.createElement("option", { value: "openai/gpt-4o-mini" }, "GPT-4o Mini (Balanced)")
-                )
-            ),
-
-            // footer action buttons frame control layout
-            React.createElement(
-                "div",
-                { style: { display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "8px" } },
-                React.createElement(
-                    "button",
-                    { 
-                        onClick: onClose,
-                        style: { background: "none", color: "var(--text-normal)", border: "none", cursor: "pointer", padding: "8px 16px" }
-                    }, 
-                    "Cancel"
-                ),
-                React.createElement(
-                    "button",
-                    { 
-                        onClick: handleSave,
-                        style: { backgroundColor: "var(--brand-experiment)", color: "white", border: "none", padding: "8px 16px", borderRadius: "4px", cursor: "pointer" }
-                    }, 
-                    "Save Settings"
-                )
-            )
-        )
-    )
+  return React.createElement("div", { className: "fkryx-settings-body" },
+    React.createElement("div", { className: "fkryx-settings-title centered" }, "| | - AI Personalization - | |"),
+    React.createElement("div", { className: "fkryx-setting-item" },
+      React.createElement("label", { className: "fkryx-setting-label" }, "Nombre de la IA"),
+      React.createElement("input", {
+        type: "text",
+        value: settingsDraft.aiName,
+        onChange: e => update("aiName", e.target.value),
+        className: "fkryx-settings-input"
+      })
+    ),
+    React.createElement("div", { className: "fkryx-setting-item" },
+      React.createElement("label", { className: "fkryx-setting-label" }, "Instrucciones que debe seguir la IA"),
+      React.createElement("textarea", {
+        value: settingsDraft.aiSystem,
+        onChange: e => update("aiSystem", e.target.value),
+        className: "fkryx-settings-textarea"
+      })
+    ),
+    React.createElement("div", { className: "fkryx-settings-title centered" }, "| | - Custom Lettering - | |"),
+    React.createElement("div", { className: "fkryx-setting-item" },
+      React.createElement("label", { className: "fkryx-setting-label" }, "Color de letras"),
+      React.createElement("input", {
+        type: "color",
+        value: settingsDraft.textColor,
+        onChange: e => update("textColor", e.target.value),
+        className: "fkryx-settings-color-input"
+      })
+    ),
+    React.createElement("div", { className: "fkryx-setting-item" },
+      React.createElement("label", { className: "fkryx-setting-label" }, "Fuente personalizada"),
+      React.createElement("select", {
+        className: "fkryx-settings-select",
+        value: settingsDraft.fontFamily,
+        onChange: e => update("fontFamily", e.target.value)
+      }, FONT_OPTIONS.map(f =>
+        React.createElement("option", { key: f.value, value: f.value }, f.label)
+      )),
+      React.createElement("span", { className: "fkryx-settings-subtext" },
+        settingsDraft.fontFamily === appliedFontFamily
+          ? "✔ Esta fuente está aplicada"
+          : "Selecciona una fuente para aplicarla"
+      )
+    ),
+    React.createElement("div", { className: "fkryx-setting-item" },
+      React.createElement("label", { className: "fkryx-setting-label" }, "Tamaño de letras"),
+      React.createElement("div", { className: "fkryx-font-size-control" },
+        React.createElement("button", {
+          className: "fkryx-font-size-btn",
+          onClick: () => update("fontSize", Math.max(10, settingsDraft.fontSize - 1))
+        }, "-"),
+        React.createElement("span", { className: "fkryx-font-size-value" }, `${settingsDraft.fontSize}px`),
+        React.createElement("button", {
+          className: "fkryx-font-size-btn",
+          onClick: () => update("fontSize", Math.min(32, settingsDraft.fontSize + 1))
+        }, "+")
+      )
+    ),
+    React.createElement("div", { className: "fkryx-settings-help" },
+      "El color y la fuente se aplican a toda la ventana y a todos los textos."
+    ),
+    React.createElement("div", { className: "fkryx-settings-title centered" }, "| | - Background - | |"),
+    React.createElement("div", { className: "fkryx-setting-item" },
+      React.createElement("label", { className: "fkryx-setting-label" }, "Color de fondo"),
+      React.createElement("input", {
+        type: "color",
+        value: settingsDraft.backgroundColor,
+        onChange: e => update("backgroundColor", e.target.value),
+        className: "fkryx-settings-color-input"
+      })
+    ),
+    React.createElement("div", { className: "fkryx-setting-item" },
+      React.createElement("label", { className: "fkryx-setting-label" }, "Transparencia del fondo"),
+      React.createElement("div", { className: "fkryx-font-size-control" },
+        React.createElement("input", {
+          type: "range", min: "0", max: "100",
+          value: settingsDraft.backgroundOpacity,
+          onChange: e => update("backgroundOpacity", Number(e.target.value)),
+          className: "fkryx-settings-select",
+          style: { width: "100%" }
+        })
+      ),
+      React.createElement("span", { className: "fkryx-settings-subtext" },
+        `${settingsDraft.backgroundOpacity}% opacidad`
+      )
+    ),
+    React.createElement("div", { className: "fkryx-settings-help" },
+      "Configura el color y la transparencia del fondo de la ventana de IA."
+    ),
+    hasUnsaved && React.createElement("button", {
+      className: "fkryx-save-settings-btn",
+      onClick: onSave
+    }, "Guardar configuración")
+  );
 }
